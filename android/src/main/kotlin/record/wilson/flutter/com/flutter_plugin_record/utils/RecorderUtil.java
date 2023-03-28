@@ -83,7 +83,9 @@ public class RecorderUtil {
     private void initRecorder() {
         recorder = MsRecorder.wav(
                 new File(voicePath),
-                new AudioRecordConfig.Default(),
+//                new AudioRecordConfig.Default(),
+                new AudioRecordConfig(),
+
                 new PullTransport.Default()
                         .setOnAudioChunkPulledListener(new PullTransport.OnAudioChunkPulledListener() {
                             @Override

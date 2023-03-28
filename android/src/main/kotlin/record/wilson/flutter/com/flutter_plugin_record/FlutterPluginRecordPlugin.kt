@@ -1,35 +1,36 @@
 package record.wilson.flutter.com.flutter_plugin_record
 
 import android.Manifest
-import android.app.Activity
-import android.content.Context
 import android.content.pm.PackageManager
 import android.util.Log
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import cafe.adriel.androidaudioconverter.AndroidAudioConverter
-import cafe.adriel.androidaudioconverter.callback.IConvertCallback
-import cafe.adriel.androidaudioconverter.callback.ILoadCallback
-import cafe.adriel.androidaudioconverter.model.AudioFormat
-import io.flutter.embedding.engine.plugins.FlutterPlugin
-import io.flutter.embedding.engine.plugins.activity.ActivityAware
-import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
-import io.flutter.plugin.common.BinaryMessenger
+//import cafe.adriel.androidaudioconverter.AndroidAudioConverter
+//import cafe.adriel.androidaudioconverter.callback.IConvertCallback
+//import cafe.adriel.androidaudioconverter.callback.ILoadCallback
+//import cafe.adriel.androidaudioconverter.model.AudioFormat
+
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 import io.flutter.plugin.common.PluginRegistry
 import io.flutter.plugin.common.PluginRegistry.Registrar
+import record.wilson.flutter.com.flutter_plugin_record.androidaudioconverter.*
+import record.wilson.flutter.com.flutter_plugin_record.androidaudioconverter.AndroidAudioConverter
+import record.wilson.flutter.com.flutter_plugin_record.androidaudioconverter.callback.IConvertCallback
+import record.wilson.flutter.com.flutter_plugin_record.androidaudioconverter.callback.ILoadCallback
+import record.wilson.flutter.com.flutter_plugin_record.androidaudioconverter.model.AudioFormat
 import record.wilson.flutter.com.flutter_plugin_record.utils.*
 import java.io.File
 import java.util.*
 
 
-class FlutterPluginRecordPlugin : FlutterPlugin, MethodCallHandler, ActivityAware ,PluginRegistry.RequestPermissionsResultListener {
+class FlutterPluginRecordPlugin : MethodCallHandler, PluginRegistry.RequestPermissionsResultListener {
 
-    lateinit var channel: MethodChannel
+    private var registrar: Registrar
+    private var channel: MethodChannel
     private lateinit var _result: Result
     private lateinit var call: MethodCall
     private lateinit var voicePlayPath: String
@@ -39,61 +40,25 @@ class FlutterPluginRecordPlugin : FlutterPlugin, MethodCallHandler, ActivityAwar
     @Volatile
     private var audioHandler: AudioHandler? = null
 
-    lateinit var activity:Activity
-
     companion object {
-        //support embedding v1
         @JvmStatic
         fun registerWith(registrar: Registrar) {
-            val plugin = initPlugin(registrar.messenger())
-            plugin.activity=registrar.activity()
-            registrar.addRequestPermissionsResultListener(plugin)
-        }
-
-        private fun initPlugin(binaryMessenger: BinaryMessenger):FlutterPluginRecordPlugin {
-            val channel = createMethodChannel(binaryMessenger)
-            val plugin = FlutterPluginRecordPlugin()
-            channel.setMethodCallHandler(plugin)
-            plugin.channel = channel
-            return plugin
-        }
-
-        private fun createMethodChannel(binaryMessenger: BinaryMessenger):MethodChannel{
-            return  MethodChannel(binaryMessenger, "flutter_plugin_record");
+            var channel = MethodChannel(registrar.messenger(), "flutter_plugin_record")
+            registrar.activeContext().applicationContext
+            channel.setMethodCallHandler(FlutterPluginRecordPlugin(registrar, channel))
         }
     }
-    override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-       val methodChannel = createMethodChannel(binding.binaryMessenger)
-        methodChannel.setMethodCallHandler(this)
-        channel=methodChannel
+
+    constructor(registrar: Registrar, _channel: MethodChannel) {
+        this.registrar = registrar
+        this.registrar.addRequestPermissionsResultListener(this)
+        this.channel = _channel
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+//            initPermission()
+//        }
     }
 
-
-
-    override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-    }
-
-    override fun onAttachedToActivity(binding: ActivityPluginBinding) {
-        initActivityBinding(binding)
-    }
-
-    private fun initActivityBinding(binding: ActivityPluginBinding) {
-        binding.addRequestPermissionsResultListener(this)
-        activity=binding.activity
-    }
-
-
-    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
-        initActivityBinding(binding)
-    }
-
-    override fun onDetachedFromActivityForConfigChanges() {
-    }
-    override fun onDetachedFromActivity() {
-    }
-
-
-    override  fun onMethodCall(call: MethodCall, result: Result) {
+    override fun onMethodCall(call: MethodCall, result: Result) {
         _result = result
         this.call = call
         when (call.method) {
@@ -114,7 +79,7 @@ class FlutterPluginRecordPlugin : FlutterPlugin, MethodCallHandler, ActivityAwar
 
     //初始化wav转 MP3
     private fun initWavToMp3(){
-        AndroidAudioConverter.load(activity.applicationContext, object : ILoadCallback {
+        AndroidAudioConverter.load(registrar.context(), object : ILoadCallback {
             override fun onSuccess() {
                 // Great!
                 Log.d("android", "  AndroidAudioConverter onSuccess")
@@ -210,8 +175,8 @@ class FlutterPluginRecordPlugin : FlutterPlugin, MethodCallHandler, ActivityAwar
 
     @Synchronized
     private fun start() {
-        var packageManager = activity.packageManager
-        var permission = PackageManager.PERMISSION_GRANTED == packageManager.checkPermission(Manifest.permission.RECORD_AUDIO,activity.packageName)
+        var packageManager = registrar.activity().packageManager
+        var permission = PackageManager.PERMISSION_GRANTED == packageManager.checkPermission(Manifest.permission.RECORD_AUDIO, registrar.activeContext().packageName)
         if (permission) {
             Log.d("android voice  ", "start")
             //        recorderUtil.startRecord();
@@ -235,8 +200,8 @@ class FlutterPluginRecordPlugin : FlutterPlugin, MethodCallHandler, ActivityAwar
 
     @Synchronized
     private fun startByWavPath() {
-        var packageManager = activity.packageManager
-        var permission = PackageManager.PERMISSION_GRANTED == packageManager.checkPermission(Manifest.permission.RECORD_AUDIO, activity.packageName)
+        var packageManager = registrar.activity().packageManager
+        var permission = PackageManager.PERMISSION_GRANTED == packageManager.checkPermission(Manifest.permission.RECORD_AUDIO, registrar.activeContext().packageName)
         if (permission) {
             Log.d("android voice  ", "start")
             val _id = call.argument<String>("id")
@@ -270,8 +235,8 @@ class FlutterPluginRecordPlugin : FlutterPlugin, MethodCallHandler, ActivityAwar
     }
 
     private fun checkPermission() {
-        var packageManager = activity.packageManager
-        var permission = PackageManager.PERMISSION_GRANTED == packageManager.checkPermission(Manifest.permission.RECORD_AUDIO,activity.packageName)
+        var packageManager = registrar.activity().packageManager
+        var permission = PackageManager.PERMISSION_GRANTED == packageManager.checkPermission(Manifest.permission.RECORD_AUDIO, registrar.activeContext().packageName)
         if (permission) {
             initRecord()
         } else {
@@ -282,8 +247,8 @@ class FlutterPluginRecordPlugin : FlutterPlugin, MethodCallHandler, ActivityAwar
     }
 
     private fun initPermission() {
-        if (ContextCompat.checkSelfPermission(activity, Manifest.permission.RECORD_AUDIO) !== PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.WRITE_EXTERNAL_STORAGE), 1)
+        if (ContextCompat.checkSelfPermission(registrar.activity(), Manifest.permission.RECORD_AUDIO) !== PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(registrar.activity(), arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.WRITE_EXTERNAL_STORAGE), 1)
         }
     }
 
@@ -297,7 +262,7 @@ class FlutterPluginRecordPlugin : FlutterPlugin, MethodCallHandler, ActivityAwar
         }
 
 
-        override fun onStop(recordFile: File?, audioTime: Double?) {
+        override fun onStop(recordFile: File?, audioTime: Long?) {
             if (recordFile != null) {
                 voicePlayPath = recordFile.path
                 if (recordMp3){
@@ -313,14 +278,14 @@ class FlutterPluginRecordPlugin : FlutterPlugin, MethodCallHandler, ActivityAwar
                             m1["voicePath"] = convertedFile.path
                             m1["audioTimeLength"] = audioTime.toString()
                             m1["result"] = "success"
-                            activity.runOnUiThread { channel.invokeMethod("onStop", m1) }
+                            registrar.activity().runOnUiThread { channel.invokeMethod("onStop", m1) }
                         }
 
                         override fun onFailure(error: java.lang.Exception) {
                             Log.d("android", "  ConvertCallback $error")
                         }
                     }
-                    AndroidAudioConverter.with(activity.applicationContext)
+                    AndroidAudioConverter.with(registrar.context())
                             .setFile(recordFile)
                             .setFormat(AudioFormat.MP3)
                             .setCallback(callback)
@@ -333,7 +298,7 @@ class FlutterPluginRecordPlugin : FlutterPlugin, MethodCallHandler, ActivityAwar
                     m1["voicePath"] = voicePlayPath
                     m1["audioTimeLength"] = audioTime.toString()
                     m1["result"] = "success"
-                    activity.runOnUiThread { channel.invokeMethod("onStop", m1) }
+                    registrar.activity().runOnUiThread { channel.invokeMethod("onStop", m1) }
 
                 }
             }
@@ -350,7 +315,7 @@ class FlutterPluginRecordPlugin : FlutterPlugin, MethodCallHandler, ActivityAwar
 
 
         init {
-            cacheDirectory = FileTool.getIndividualAudioCacheDirectory(activity)
+            cacheDirectory = FileTool.getIndividualAudioCacheDirectory(registrar.activity())
             fileName = UUID.randomUUID().toString()
         }
 
@@ -366,7 +331,7 @@ class FlutterPluginRecordPlugin : FlutterPlugin, MethodCallHandler, ActivityAwar
             m1["amplitude"] = db / 100
             m1["result"] = "success"
 
-            activity.runOnUiThread { channel.invokeMethod("onAmplitude", m1) }
+            registrar.activity().runOnUiThread { channel.invokeMethod("onAmplitude", m1) }
 
 
         }
@@ -378,7 +343,7 @@ class FlutterPluginRecordPlugin : FlutterPlugin, MethodCallHandler, ActivityAwar
 
 
     private inner class MessageRecordListener : AudioHandler.RecordListener {
-        override fun onStop(recordFile: File?, audioTime: Double?) {
+        override fun onStop(recordFile: File?, audioTime: Long?) {
             LogUtils.LOGE("MessageRecordListener onStop $recordFile")
             if (recordFile != null) {
                 voicePlayPath = recordFile.path
@@ -394,14 +359,14 @@ class FlutterPluginRecordPlugin : FlutterPlugin, MethodCallHandler, ActivityAwar
                             m1["voicePath"] = convertedFile.path
                             m1["audioTimeLength"] = audioTime.toString()
                             m1["result"] = "success"
-                            activity.runOnUiThread { channel.invokeMethod("onStop", m1) }
+                            registrar.activity().runOnUiThread { channel.invokeMethod("onStop", m1) }
                         }
 
                         override fun onFailure(error: java.lang.Exception) {
                             Log.d("android", "  ConvertCallback $error")
                         }
                     }
-                    AndroidAudioConverter.with(activity.applicationContext)
+                    AndroidAudioConverter.with(registrar.context())
                             .setFile(recordFile)
                             .setFormat(AudioFormat.MP3)
                             .setCallback(callback)
@@ -414,7 +379,7 @@ class FlutterPluginRecordPlugin : FlutterPlugin, MethodCallHandler, ActivityAwar
                     m1["voicePath"] = voicePlayPath
                     m1["audioTimeLength"] = audioTime.toString()
                     m1["result"] = "success"
-                    activity.runOnUiThread { channel.invokeMethod("onStop", m1) }
+                    registrar.activity().runOnUiThread { channel.invokeMethod("onStop", m1) }
 
                 }
             }
@@ -432,7 +397,7 @@ class FlutterPluginRecordPlugin : FlutterPlugin, MethodCallHandler, ActivityAwar
 
 
         init {
-            cacheDirectory = FileTool.getIndividualAudioCacheDirectory(activity)
+            cacheDirectory = FileTool.getIndividualAudioCacheDirectory(registrar.activity())
             fileName = UUID.randomUUID().toString()
         }
 
@@ -448,7 +413,7 @@ class FlutterPluginRecordPlugin : FlutterPlugin, MethodCallHandler, ActivityAwar
             m1["amplitude"] = db / 100
             m1["result"] = "success"
 
-            activity.runOnUiThread { channel.invokeMethod("onAmplitude", m1) }
+            registrar.activity().runOnUiThread { channel.invokeMethod("onAmplitude", m1) }
 
 
         }
@@ -459,8 +424,6 @@ class FlutterPluginRecordPlugin : FlutterPlugin, MethodCallHandler, ActivityAwar
     }
 
 
-
-
     // 权限监听回调
     override fun onRequestPermissionsResult(p0: Int, p1: Array<out String>?, p2: IntArray?): Boolean {
         if (p0 == 1) {
@@ -468,9 +431,8 @@ class FlutterPluginRecordPlugin : FlutterPlugin, MethodCallHandler, ActivityAwar
 //                initRecord()
                 return true
             } else {
-
-                Toast.makeText(activity, "Permission Denied", Toast.LENGTH_SHORT).show()
-                DialogUtil.Dialog(activity, "申请权限")
+                Toast.makeText(registrar.activity(), "Permission Denied", Toast.LENGTH_SHORT).show()
+                DialogUtil.Dialog(registrar.activity(), "申请权限")
             }
             return false
         }
@@ -478,6 +440,5 @@ class FlutterPluginRecordPlugin : FlutterPlugin, MethodCallHandler, ActivityAwar
         return false
     }
 
-    
 
 }
